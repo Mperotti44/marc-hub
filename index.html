@@ -440,7 +440,8 @@ function StrengthTracker(){
     let{current:c,best:b,lastDate:ld}=streaks;
     if(ld===today){}else if(ld===yest){c+=1;}else{c=1;}if(c>b)b=c;
     const ns={current:c,best:b,lastDate:today};
-    await api.post("Strength_Sessions",{week_key:weekKey,day_id:activeDay.id,day_title:activeDay.title,date:getDateKey(),exercises:activeDay.exercises.length,sets:activeDay.exercises.reduce((a,e)=>a+e.sets,0),weights_used:JSON.stringify(Object.fromEntries(activeDay.exercises.map(e=>[e.id,weightInputs[e.id]||""])))});
+    const weightsUsed=activeDay.exercises.map(e=>`${e.name}:${weightInputs[e.id]||"BW"}`).join("|");
+    await api.post("Strength_Sessions",{week_key:weekKey,day_id:activeDay.id,day_title:activeDay.title,date:getDateKey(),exercises:activeDay.exercises.length,sets:activeDay.exercises.reduce((a,e)=>a+e.sets,0),weights_used:weightsUsed});
     await api.upsert("Strength_Meta",{key:"weights",value:JSON.stringify(nw)},"key","weights");
     await api.upsert("Strength_Meta",{key:"streaks",value:JSON.stringify(ns)},"key","streaks");
     setLogs(prev=>({...prev,[weekKey]:{...(prev[weekKey]||{}),[activeDay.id]:true}}));

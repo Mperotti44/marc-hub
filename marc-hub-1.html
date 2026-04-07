@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<title>Marc Hub</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+  body{background:#F7F4EF;color:#1a1a1a;font-family:'Inter',sans-serif;min-height:100vh;}
+  textarea,input,button{font-family:'Inter',sans-serif;}
+  textarea{resize:none;outline:none;}
+  input{outline:none;}
+  ::-webkit-scrollbar{width:4px;}
+  ::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.15);border-radius:2px;}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const SHEETDB_URL = "https://sheetdb.io/api/v1/vm50eb1f8pb5i";
+
+const T = {
+  bg:"#F7F4EF", bg2:"#EFECE5", bg3:"#E4E0D8",
+  card:"#FFFFFF", border:"#DDD9D0", border2:"#C4BFB4",
+  text1:"#1A1A1A", text2:"#4A4A4A", text3:"#888078",
+  anchor:"#4A7C9E", green:"#6B8F71",
+};
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+const api = {
+  async getSheet(sheet) {
+    try { const r=await fetch(`${SHEETDB_URL}?sheet=${sheet}`); if(!r.ok)return[]; return await r.json(); } catch{return[];}
+  },
+  async upsert(sheet,data,col,val) {
+    try {
+      const chk=await fetch(`${SHEETDB_URL}/search?sheet=${sheet}&${col}=${encodeURIComponent(val)}`);
+      const ex=await chk.json();
+      if(ex&&ex.length>0){
+        await fetch(`${SHEETDB_URL}/${col}/${encodeURIComponent(val)}?sheet=${sheet}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({data})});
+      } else {
+        await fetch(`${SHEETDB_URL}?sheet=${sheet}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:[data]})});
+      }
+    } catch(e){console.error(e);}
+  },
+  async post(sheet,data) {
+    try { await fetch(`${SHEETDB_URL}?sheet=${sheet}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:[data]})}); } catch(e){console.error(e);}
+  }
+};
+
+// ─── PILLARS ──────────────────────────────────────────────────────────────────
+const PILLARS = [
+  {id:"meditation",label:"Meditation",icon:"◎",color:"#6B8F71",questions:[
+    {id:"sat",label:"Sat for at least 10 minutes",type:"bool",points:3},
+    {id:"morning",label:"Before work / before the noise",type:"bool",points:2},
+    {id:"quality",label:"Depth of presence",type:"score",points:5}]},
+  {id:"strength",label:"Strength",icon:"⊕",color:"#C07B4A",questions:[
+    {id:"trained",label:"Completed gym session",type:"bool",points:3},
+    {id:"planned",label:"Followed a plan (not improvised)",type:"bool",points:2},
+    {id:"intensity",label:"Effort level",type:"score",points:5}]},
+  {id:"nutrition",label:"Nutrition",icon:"◈",color:"#9A8B5A",questions:[
+    {id:"postrun",label:"Smart choice after training / when hungry",type:"bool",points:3},
+    {id:"noprocess",label:"Avoided processed / junk food",type:"bool",points:2},
+    {id:"quality",label:"Overall food quality today",type:"score",points:5}]},
+  {id:"abundance",label:"Abundance",icon:"◇",color:"#5A7A9A",questions:[
+    {id:"anchor",label:"Morning vision anchor (yacht / family / freedom)",type:"bool",points:3},
+    {id:"separation",label:"Kept business stress separate from identity",type:"bool",points:2},
+    {id:"feeling",label:"Felt genuine abundance today",type:"score",points:5}]},
+  {id:"standards",label:"Standards",icon:"◉",color:"#9A5A7A",questions:[
+    {id:"spoke",label:"Said what needed to be said (didn't swallow it)",type:"bool",points:3},
+    {id:"clear",label:"Gave at least one clear, direct instruction",type:"bool",points:2},
+    {id:"energy",label:"Protected your energy from staff friction",type:"score",points:5}]},
+];
+const DAYS_OS=["MON","TUE","WED","THU","FRI","SAT","SUN"];
+const MAX_PILLAR=10, MAX_TOTAL=PILLARS.length*MAX_PILLAR;
+
+// ─── STRENGTH DAYS ────────────────────────────────────────────────────────────
+const STRENGTH_DAYS=[
+  {id:"monday",label:"MON",title:"Glutes & Hips",emoji:"🍑",color:"#D4581A",exercises:[
+    {id:"hip_thrust",name:"Hip Thrust",sets:3,reps:"10",note:"2s down, squeeze top. Add 2.5–5kg every 1–2 weeks."},
+    {id:"copenhagen",name:"Copenhagen Plank",sets:3,reps:"30s",note:"Hold steady. Build to 40s then 50s."},
+    {id:"glute_bridge_sl",name:"Single Leg Glute Bridge",sets:2,reps:"12 each",note:"Controlled. Keep hips level."}]},
+  {id:"tuesday",label:"TUE",title:"Hamstrings & Calves",emoji:"🦵",color:"#B82C36",exercises:[
+    {id:"rdl",name:"Romanian Deadlift",sets:3,reps:"8",note:"3s lowering. Hinge at hips, soft knee."},
+    {id:"nordic",name:"Nordic Curl",sets:3,reps:"5",note:"4s lowering. Brutal but essential."},
+    {id:"calf_raise",name:"Single Leg Calf Raise",sets:3,reps:"15 each",note:"2s up, 2s down. Slow and deliberate."}]},
+  {id:"wednesday",label:"WED",title:"Pull & Upper Back",emoji:"💪",color:"#1A8C82",exercises:[
+    {id:"pullup",name:"Pull-up / DB Row",sets:4,reps:"8",note:"No swinging. Add 1 rep per week."},
+    {id:"face_pull",name:"Face Pull / Band Pull Apart",sets:3,reps:"15",note:"Squeeze shoulder blades together."},
+    {id:"ring_row",name:"Ring Row / Inverted Row",sets:2,reps:"10",note:"2s hold at top. Keep body rigid."}]},
+  {id:"thursday",label:"THU",title:"Core & Anti-Rotation",emoji:"🧱",color:"#6030BB",exercises:[
+    {id:"pallof",name:"Pallof Press",sets:3,reps:"12 each side",note:"Hold 2s extended. Resist rotation."},
+    {id:"dead_bug",name:"Dead Bug",sets:3,reps:"8 each side",note:"3s lowering. Lower back glued to floor."},
+    {id:"farmers",name:"Farmer's Carry",sets:3,reps:"30m",note:"Tall posture. No leaning. Heavy."},
+    {id:"adductor_raise",name:"Side-lying Adductor Raise",sets:3,reps:"15 each",note:"Rehab focus. Slow and controlled."}]},
+  {id:"friday",label:"FRI",title:"Push & Single Leg",emoji:"🔥",color:"#C46808",exercises:[
+    {id:"bulgarian",name:"Bulgarian Split Squat",sets:3,reps:"8 each",note:"Weeks 1–2: bodyweight only. 2s down."},
+    {id:"db_press",name:"Dumbbell Press",sets:3,reps:"10",note:"Flat or incline. Controlled throughout."},
+    {id:"pushup",name:"Push-up Variation",sets:2,reps:"Max reps",note:"Smooth. No sagging hips."}]},
+];
+const WARMUP=["90/90 Hip Switch — 10 reps each side","Glute Bridge — 15 reps bodyweight","Dead Bug — 5 reps each side, slow"];
+
+// ─── UTILS ────────────────────────────────────────────────────────────────────
+const getToday=()=>{const d=new Date();return d.getDay()===0?6:d.getDay()-1;};
+const getWeekKey=()=>{const d=new Date(),j=new Date(d.getFullYear(),0,1),w=Math.ceil(((d-j)/86400000+j.getDay()+1)/7);return `${d.getFullYear()}-W${w}`;};
+const getDateKey=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;};
+const calcPillarScore=(pillar,data)=>{if(!data)return 0;let t=0;pillar.questions.forEach(q=>{const v=data[q.id];if(q.type==="bool")t+=v?q.points:0;else if(q.type==="score")t+=v?Math.round((v/10)*q.points):0;});return Math.min(t,MAX_PILLAR);};
+const getGrade=(pct)=>{if(pct>=0.9)return{label:"ELITE",color:T.green};if(pct>=0.75)return{label:"STRONG",color:"#C07B4A"};if(pct>=0.55)return{label:"BUILDING",color:"#9A8B5A"};if(pct>=0.35)return{label:"SHAKY",color:"#5A7A9A"};return{label:"MISSED",color:"#B04040"};};
+const getTotalSessions=logs=>Object.values(logs).reduce((a,w)=>a+Object.values(w).filter(Boolean).length,0);
+const getMotivation=s=>{if(s>=14)return"Two weeks straight. You're not the same person who started.";if(s>=7)return"One full week. The compound effect is real.";if(s>=3)return"Three days in a row. Habits are forming.";if(s>=1)return"Every session is a vote for the athlete you're becoming.";return"Day one is the hardest. You showed up. That matters.";};
+
+// ─── RING ─────────────────────────────────────────────────────────────────────
+function Ring({score,max,color,size=72,label}){
+  const pct=max>0?score/max:0,r=(size-10)/2,circ=2*Math.PI*r,dash=circ*pct;
+  return(
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+      <svg width={size} height={size} style={{transform:"rotate(-90deg)"}}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={T.bg3} strokeWidth={5}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={5} strokeDasharray={`${dash} ${circ}`} strokeLinecap="round" style={{transition:"stroke-dasharray 0.6s ease"}}/>
+        <text x={size/2} y={size/2+2} textAnchor="middle" fill={T.text1} fontSize={size*0.2} fontWeight="600" fontFamily="'Playfair Display',serif" style={{transform:"rotate(90deg)",transformOrigin:`${size/2}px ${size/2}px`}}>{score}</text>
+        <text x={size/2} y={size/2+14} textAnchor="middle" fill={T.text3} fontSize={size*0.13} fontFamily="'Inter',sans-serif" style={{transform:"rotate(90deg)",transformOrigin:`${size/2}px ${size/2}px`}}>/{max}</text>
+      </svg>
+      {label&&<div style={{fontSize:9,letterSpacing:1.5,color:T.text3,textTransform:"uppercase",fontWeight:600}}>{label}</div>}
+    </div>
+  );
+}
+
+// ─── PILLAR CARD ──────────────────────────────────────────────────────────────
+function PillarCard({pillar,data,onUpdate,editable}){
+  const score=calcPillarScore(pillar,data),grade=getGrade(score/MAX_PILLAR);
+  return(
+    <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:"18px 18px 18px 22px",position:"relative",overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+      <div style={{position:"absolute",top:0,left:0,width:4,height:"100%",background:pillar.color,borderRadius:"14px 0 0 14px"}}/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+            <span style={{color:pillar.color,fontSize:15}}>{pillar.icon}</span>
+            <span style={{fontFamily:"'Playfair Display',serif",fontSize:17,color:T.text1,fontWeight:600}}>{pillar.label}</span>
+          </div>
+          <div style={{fontSize:10,letterSpacing:2,color:grade.color,textTransform:"uppercase",fontWeight:700}}>{grade.label}</div>
+        </div>
+        <Ring score={score} max={MAX_PILLAR} color={pillar.color} size={58}/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:11}}>
+        {pillar.questions.map(q=>(
+          <div key={q.id} style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{flex:1,fontSize:13,color:T.text2,lineHeight:1.4}}>{q.label}</div>
+            {q.type==="bool"?(
+              <button onClick={()=>editable&&onUpdate(pillar.id,q.id,!data?.[q.id])} style={{width:32,height:32,borderRadius:8,flexShrink:0,border:`2px solid ${data?.[q.id]?pillar.color:T.border2}`,background:data?.[q.id]?pillar.color:"transparent",color:data?.[q.id]?"white":T.text3,cursor:editable?"pointer":"default",fontSize:15,display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.15s",fontWeight:700}}>
+                {data?.[q.id]?"✓":"·"}
+              </button>
+            ):(
+              <div style={{display:"flex",gap:3,flexShrink:0}}>
+                {[1,2,3,4,5,6,7,8,9,10].map(v=>(
+                  <button key={v} onClick={()=>editable&&onUpdate(pillar.id,q.id,data?.[q.id]===v?0:v)} style={{width:18,height:18,borderRadius:4,padding:0,border:`1px solid ${(data?.[q.id]||0)>=v?pillar.color:T.border}`,background:(data?.[q.id]||0)>=v?pillar.color:T.bg2,cursor:editable?"pointer":"default",transition:"all 0.1s"}}/>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── REFLECTION ───────────────────────────────────────────────────────────────
+function ReflectionJournal({initData,onSave}){
+  const [ans,setAns]=React.useState(initData||{});
+  const [foc,setFoc]=React.useState(null);
+  const tmr=React.useRef(null);
+  const upd=(id,val)=>{const n={...ans,[id]:val};setAns(n);clearTimeout(tmr.current);tmr.current=setTimeout(()=>{if(onSave)onSave(n);},1500);};
+  const ta=(id,rows=1)=>({width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${foc===id?T.border2:T.border}`,color:T.text1,fontSize:14,lineHeight:1.7,padding:"4px 0 6px",fontFamily:"'Playfair Display',serif",transition:"border-color 0.15s"});
+  return(
+    <div style={{marginTop:12}}>
+      <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+        <div style={{padding:"13px 20px",borderBottom:`1px solid ${T.border}`,background:T.bg2,display:"flex",alignItems:"center",gap:8}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:T.anchor}}/>
+          <div style={{fontSize:11,letterSpacing:2,color:T.anchor,textTransform:"uppercase",fontWeight:700}}>Evening Reflection</div>
+        </div>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`}}>
+          <div style={{fontSize:11,letterSpacing:1.5,color:T.text3,textTransform:"uppercase",marginBottom:8,fontWeight:600}}>01 — What are you proud of today?</div>
+          <textarea value={ans.proud||""} onChange={e=>upd("proud",e.target.value)} onFocus={()=>setFoc("proud")} onBlur={()=>setFoc(null)} placeholder="Something you did, felt, or chose well..." rows={2} style={ta("proud")}/>
+        </div>
+        <div style={{padding:"16px 20px",borderBottom:`1px solid ${T.border}`}}>
+          <div style={{fontSize:11,letterSpacing:1.5,color:T.text3,textTransform:"uppercase",marginBottom:12,fontWeight:600}}>02 — 3 Things I'm grateful for</div>
+          {["grateful1","grateful2","grateful3"].map((id,i)=>(
+            <div key={id} style={{display:"flex",alignItems:"flex-start",gap:10,marginBottom:i<2?10:0}}>
+              <div style={{fontSize:12,color:T.text3,paddingTop:6,minWidth:18,fontWeight:600}}>{i+1}.</div>
+              <textarea value={ans[id]||""} onChange={e=>upd(id,e.target.value)} onFocus={()=>setFoc(id)} onBlur={()=>setFoc(null)} placeholder="Grateful for..." rows={1} style={{...ta(id),flex:1,width:"auto"}}/>
+            </div>
+          ))}
+        </div>
+        <div style={{padding:"16px 20px"}}>
+          <div style={{fontSize:11,letterSpacing:1.5,color:T.text3,textTransform:"uppercase",marginBottom:8,fontWeight:600}}>03 — One intention for tomorrow</div>
+          <textarea value={ans.tomorrow||""} onChange={e=>upd("tomorrow",e.target.value)} onFocus={()=>setFoc("tomorrow")} onBlur={()=>setFoc(null)} placeholder="One thing. Make it count..." rows={2} style={ta("tomorrow")}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── MARC OS ──────────────────────────────────────────────────────────────────
+function MarcOS(){
+  const [allRows,setAllRows]=React.useState([]);
+  const [localDay,setLocalDay]=React.useState({});
+  const [selDay,setSelDay]=React.useState(getToday());
+  const [view,setView]=React.useState("daily");
+  const [saving,setSaving]=React.useState(false);
+  const [saved,setSaved]=React.useState(false);
+  const [loading,setLoading]=React.useState(true);
+  const todayIdx=getToday(),weekKey=getWeekKey(),dateKey=getDateKey();
+
+  React.useEffect(()=>{
+    api.getSheet("OS_Daily").then(rows=>{
+      setAllRows(rows||[]);
+      const tr=(rows||[]).find(r=>r.date_key===dateKey);
+      if(tr){try{setLocalDay(JSON.parse(tr.pillars||"{}"));}catch{}}
+      setLoading(false);
+    });
+  },[]);
+
+  const getWeekRows=()=>{
+    const wk={},now=new Date();
+    for(let i=0;i<7;i++){
+      const d=new Date(now),dow=now.getDay()===0?6:now.getDay()-1;
+      d.setDate(now.getDate()-dow+i);
+      const dk=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+      const row=allRows.find(r=>r.date_key===dk);
+      wk[i]=row?{pillars:(()=>{try{return JSON.parse(row.pillars||"{}");}catch{return{};}})(),done:row.done==="true",reflection:(()=>{try{return JSON.parse(row.reflection||"{}");}catch{return{};}})(),date_key:dk}:{pillars:{},done:false,reflection:{},date_key:dk};
+    }
+    return wk;
+  };
+  const wr=getWeekRows();
+  const getDK=i=>wr[i]?.date_key||dateKey;
+  const updPillar=(pid,qid,val)=>setLocalDay(prev=>({...prev,[pid]:{...(prev[pid]||{}),[qid]:val}}));
+  const getDayTotal=i=>{const p=i===todayIdx?localDay:(wr[i]?.pillars||{});return PILLARS.reduce((a,pl)=>a+calcPillarScore(pl,p[pl.id]),0);};
+  const isDone=i=>wr[i]?.done||false;
+
+  const markDone=async()=>{
+    setSaving(true);
+    const dk=getDK(todayIdx),ex=allRows.find(r=>r.date_key===dk);
+    await api.upsert("OS_Daily",{date_key:dk,week_key:weekKey,day_idx:todayIdx,pillars:JSON.stringify(localDay),total_score:getDayTotal(todayIdx),done:"true",reflection:ex?.reflection||"{}"},"date_key",dk);
+    setAllRows(await api.getSheet("OS_Daily")||[]);
+    setSaving(false);setSaved(true);setTimeout(()=>setSaved(false),2500);
+  };
+
+  const saveRef=async ans=>{
+    const dk=getDK(todayIdx),ex=allRows.find(r=>r.date_key===dk);
+    await api.upsert("OS_Daily",{date_key:dk,week_key:weekKey,day_idx:todayIdx,pillars:JSON.stringify(localDay),total_score:getDayTotal(todayIdx),done:ex?.done||"false",reflection:JSON.stringify(ans)},"date_key",dk);
+    setAllRows(await api.getSheet("OS_Daily")||[]);
+  };
+
+  const wTotal=DAYS_OS.reduce((a,_,i)=>a+getDayTotal(i),0),wPct=wTotal/(MAX_TOTAL*7),wGrade=getGrade(wPct);
+  const dTotal=getDayTotal(selDay),dGrade=getGrade(dTotal/MAX_TOTAL);
+
+  if(loading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:300}}><div style={{fontSize:13,color:T.text3,fontWeight:600,letterSpacing:1}}>Loading your data...</div></div>);
+
+  return(
+    <div style={{paddingBottom:40}}>
+      <div style={{background:T.card,padding:"26px 20px 20px",borderBottom:`1px solid ${T.border}`,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <div style={{fontSize:10,letterSpacing:3,color:T.text3,textTransform:"uppercase",marginBottom:5,fontWeight:600}}>Personal OS · 2026</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:600,color:T.text1}}>Marc Perotti</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:9,letterSpacing:2,color:T.text3,textTransform:"uppercase",marginBottom:3,fontWeight:600}}>This Week</div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:wGrade.color,fontWeight:600}}>{Math.round(wPct*100)}<span style={{fontSize:14,color:T.text3}}>%</span></div>
+            <div style={{fontSize:10,letterSpacing:2,color:wGrade.color,textTransform:"uppercase",fontWeight:700}}>{wGrade.label}</div>
+          </div>
+        </div>
+        <div style={{marginTop:14,padding:"10px 14px",background:"#EEF4F8",border:"1px solid #C8DCE8",borderRadius:10,fontSize:12,color:T.anchor,fontStyle:"italic",fontFamily:"'Playfair Display',serif"}}>
+          ⚓ 50 meters of freedom — earned through discipline, not luck.
+        </div>
+      </div>
+
+      <div style={{padding:"0 16px"}}>
+        <div style={{display:"flex",marginTop:16,marginBottom:16,borderBottom:`2px solid ${T.border}`}}>
+          {["daily","week"].map(v=>(
+            <button key={v} onClick={()=>setView(v)} style={{padding:"10px 20px",background:"none",border:"none",fontSize:12,letterSpacing:1.5,textTransform:"uppercase",color:view===v?T.text1:T.text3,borderBottom:view===v?`2px solid ${T.text1}`:"2px solid transparent",cursor:"pointer",marginBottom:-2,fontWeight:view===v?700:500}}>{v}</button>
+          ))}
+        </div>
+
+        {view==="daily"&&(
+          <>
+            <div style={{display:"flex",gap:4,marginBottom:16}}>
+              {DAYS_OS.map((d,i)=>{
+                const dt=getDayTotal(i),isSel=i===selDay,isTod=i===todayIdx;
+                return(
+                  <button key={d} onClick={()=>setSelDay(i)} style={{flex:1,padding:"10px 0",borderRadius:10,border:`1px solid ${isSel?T.border2:T.border}`,background:isSel?T.card:T.bg2,cursor:"pointer",outline:isTod?`2px solid ${T.anchor}`:"none",outlineOffset:1}}>
+                    <div style={{fontSize:9,color:isSel?T.text1:T.text3,letterSpacing:1,textTransform:"uppercase",marginBottom:5,fontWeight:isSel?700:500}}>{d}</div>
+                    <div style={{width:5,height:5,borderRadius:"50%",margin:"0 auto",background:isDone(i)?T.green:dt>0?getGrade(dt/MAX_TOTAL).color:T.bg3}}/>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,color:T.text1,fontWeight:600}}>{DAYS_OS[selDay]}{selDay===todayIdx?" · Today":""}</div>
+                <div style={{fontSize:10,letterSpacing:2,color:dGrade.color,textTransform:"uppercase",marginTop:2,fontWeight:700}}>{dTotal}/{MAX_TOTAL} · {dGrade.label}</div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                {PILLARS.map(p=>{const pl=selDay===todayIdx?localDay:(wr[selDay]?.pillars||{});return(
+                  <div key={p.id} style={{textAlign:"center"}}>
+                    <div style={{fontSize:11,color:p.color,fontFamily:"'Playfair Display',serif",fontWeight:600}}>{calcPillarScore(p,pl[p.id])}</div>
+                    <div style={{fontSize:8,color:T.text3,textTransform:"uppercase",letterSpacing:1,fontWeight:600}}>{p.label.slice(0,3)}</div>
+                  </div>
+                );})}
+              </div>
+            </div>
+
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {PILLARS.map(p=>{const pl=selDay===todayIdx?localDay:(wr[selDay]?.pillars||{});return(
+                <PillarCard key={p.id} pillar={p} data={pl[p.id]} onUpdate={(pid,qid,val)=>updPillar(pid,qid,val)} editable={selDay===todayIdx}/>
+              );})}
+            </div>
+
+            {selDay===todayIdx&&(
+              <>
+                <ReflectionJournal initData={wr[todayIdx]?.reflection||{}} onSave={saveRef}/>
+                <div style={{marginTop:14,marginBottom:8}}>
+                  {isDone(todayIdx)?(
+                    <div style={{padding:"18px 20px",borderRadius:14,textAlign:"center",background:"#F0F6F1",border:"1px solid #B8D4BC"}}>
+                      <div style={{fontSize:20,marginBottom:6}}>✓</div>
+                      <div style={{fontSize:12,letterSpacing:2,color:T.green,textTransform:"uppercase",fontWeight:700}}>Day Complete</div>
+                      <div style={{fontSize:12,color:T.text3,marginTop:4}}>Score saved · {dTotal}/{MAX_TOTAL}</div>
+                    </div>
+                  ):(
+                    <button onClick={markDone} disabled={saving} style={{width:"100%",padding:"16px",borderRadius:14,background:saving?T.bg2:T.text1,border:"none",color:"white",fontSize:13,letterSpacing:1.5,textTransform:"uppercase",cursor:saving?"default":"pointer",fontWeight:700,transition:"all 0.2s"}}>
+                      {saving?"Saving...":saved?"Saved ✓":"Done for Today"}
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+            {selDay!==todayIdx&&(
+              <div style={{marginTop:12,marginBottom:8,padding:"12px 20px",borderRadius:12,textAlign:"center",background:T.bg2,border:`1px solid ${T.border}`}}>
+                <span style={{fontSize:11,color:T.text3,letterSpacing:1.5,textTransform:"uppercase",fontWeight:500}}>
+                  {isDone(selDay)?`✓  Day completed · ${getDayTotal(selDay)}/${MAX_TOTAL}`:"Past day — view only"}
+                </span>
+              </div>
+            )}
+          </>
+        )}
+
+        {view==="week"&&(
+          <>
+            <div style={{display:"flex",justifyContent:"space-around",padding:"20px 8px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`,marginBottom:14,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              {PILLARS.map(p=>{
+                const total=DAYS_OS.reduce((a,_,i)=>{const pl=i===todayIdx?localDay:(wr[i]?.pillars||{});return a+calcPillarScore(p,pl[p.id]);},0);
+                return <Ring key={p.id} score={total} max={MAX_PILLAR*7} color={p.color} size={52} label={p.label.slice(0,3)}/>;
+              })}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:7}}>
+              {DAYS_OS.map((d,i)=>{
+                const dt=getDayTotal(i),dp=dt/MAX_TOTAL,grade=getGrade(dp);
+                return(
+                  <div key={d} onClick={()=>{setSelDay(i);setView("daily");}} style={{padding:"13px 16px",borderRadius:10,background:T.card,border:`1px solid ${T.border}`,cursor:"pointer",position:"relative",overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                    <div style={{position:"absolute",top:0,left:0,bottom:0,width:`${dp*100}%`,background:`${grade.color}15`}}/>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",position:"relative"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        <span style={{fontSize:11,letterSpacing:2,color:i===todayIdx?T.text1:T.text2,textTransform:"uppercase",width:30,fontWeight:i===todayIdx?700:500}}>{d}</span>
+                        <div style={{display:"flex",gap:5}}>
+                          {PILLARS.map(p=>{const pl=i===todayIdx?localDay:(wr[i]?.pillars||{});return <div key={p.id} style={{width:7,height:7,borderRadius:"50%",background:calcPillarScore(p,pl[p.id])>0?p.color:T.bg3}}/>;} )}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontFamily:"'Playfair Display',serif",fontSize:16,color:T.text1,fontWeight:600}}>{dt}<span style={{fontSize:11,color:T.text3}}>/{MAX_TOTAL}</span></span>
+                        <span style={{fontSize:9,letterSpacing:1.5,color:grade.color,textTransform:"uppercase",width:55,textAlign:"right",fontWeight:700}}>{grade.label}</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{marginTop:14,padding:"20px",background:T.card,borderRadius:14,border:`1px solid ${T.border}`,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div>
+                <div style={{fontSize:10,letterSpacing:2,color:T.text3,textTransform:"uppercase",marginBottom:6,fontWeight:600}}>Week Score</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:38,color:wGrade.color,lineHeight:1,fontWeight:600}}>{Math.round(wPct*100)}<span style={{fontSize:16,color:T.text3}}>%</span></div>
+                <div style={{fontSize:10,letterSpacing:2,color:wGrade.color,textTransform:"uppercase",marginTop:4,fontWeight:700}}>{wGrade.label}</div>
+              </div>
+              <div style={{textAlign:"right",maxWidth:160}}>
+                <div style={{fontSize:10,letterSpacing:2,color:T.anchor,textTransform:"uppercase",marginBottom:6,fontWeight:600}}>⚓ North Star</div>
+                <div style={{fontSize:12,color:T.anchor,fontStyle:"italic",lineHeight:1.6,fontFamily:"'Playfair Display',serif"}}>Every disciplined week is a nautical mile closer.</div>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── STRENGTH TRACKER ─────────────────────────────────────────────────────────
+function StrengthTracker(){
+  const [logs,setLogs]=React.useState({});
+  const [weights,setWeights]=React.useState({});
+  const [streaks,setStreaks]=React.useState({current:0,best:0,lastDate:null});
+  const [activeDay,setActiveDay]=React.useState(null);
+  const [view,setView]=React.useState("home");
+  const [completedSets,setCompletedSets]=React.useState({});
+  const [sessionDone,setSessionDone]=React.useState(false);
+  const [weightInputs,setWeightInputs]=React.useState({});
+  const [showWarmup,setShowWarmup]=React.useState(true);
+  const [loading,setLoading]=React.useState(true);
+  const [saving,setSaving]=React.useState(false);
+  const weekKey=getWeekKey();
+
+  React.useEffect(()=>{
+    Promise.all([api.getSheet("Strength_Sessions"),api.getSheet("Strength_Meta")]).then(([ss,meta])=>{
+      const nl={};(ss||[]).forEach(r=>{if(!nl[r.week_key])nl[r.week_key]={};nl[r.week_key][r.day_id]=true;});
+      setLogs(nl);
+      const wr=(meta||[]).find(r=>r.key==="weights"),sr=(meta||[]).find(r=>r.key==="streaks");
+      if(wr){try{setWeights(JSON.parse(wr.value||"{}"));}catch{}}
+      if(sr){try{setStreaks(JSON.parse(sr.value||"{}"));}catch{}}
+      setLoading(false);
+    });
+  },[]);
+
+  const isC=id=>logs?.[weekKey]?.[id]===true;
+  const wkProg=STRENGTH_DAYS.filter(d=>isC(d.id)).length;
+  const totSess=getTotalSessions(logs);
+  const getBadge=()=>{if(totSess>=50)return{label:"ELITE",icon:"🏆"};if(totSess>=30)return{label:"STRONG",icon:"💎"};if(totSess>=15)return{label:"BUILDING",icon:"⚡"};if(totSess>=5)return{label:"STARTED",icon:"🔥"};return{label:"ROOKIE",icon:"🌱"};};
+  const badge=getBadge();
+
+  const startSess=day=>{setActiveDay(day);setCompletedSets({});setSessionDone(false);setShowWarmup(true);const pf={};day.exercises.forEach(e=>{pf[e.id]=weights?.[e.id]||"";});setWeightInputs(pf);setView("session");};
+  const togSet=(eid,si)=>{const k=`${eid}_${si}`;setCompletedSets(p=>({...p,[k]:!p[k]}));};
+  const isSD=(eid,si)=>completedSets[`${eid}_${si}`]===true;
+  const allDone=()=>!activeDay?false:activeDay.exercises.every(e=>Array.from({length:e.sets}).every((_,i)=>isSD(e.id,i)));
+
+  const compSess=async()=>{
+    setSaving(true);
+    const nw={...weights};Object.entries(weightInputs).forEach(([k,v])=>{if(v)nw[k]=v;});
+    const today=new Date().toDateString(),yest=new Date(Date.now()-86400000).toDateString();
+    let{current:c,best:b,lastDate:ld}=streaks;
+    if(ld===today){}else if(ld===yest){c+=1;}else{c=1;}if(c>b)b=c;
+    const ns={current:c,best:b,lastDate:today};
+    await api.post("Strength_Sessions",{week_key:weekKey,day_id:activeDay.id,day_title:activeDay.title,date:getDateKey(),exercises:activeDay.exercises.length,sets:activeDay.exercises.reduce((a,e)=>a+e.sets,0),weights_used:JSON.stringify(Object.fromEntries(activeDay.exercises.map(e=>[e.id,weightInputs[e.id]||""])))});
+    await api.upsert("Strength_Meta",{key:"weights",value:JSON.stringify(nw)},"key","weights");
+    await api.upsert("Strength_Meta",{key:"streaks",value:JSON.stringify(ns)},"key","streaks");
+    setLogs(prev=>({...prev,[weekKey]:{...(prev[weekKey]||{}),[activeDay.id]:true}}));
+    setWeights(nw);setStreaks(ns);setSaving(false);setSessionDone(true);
+  };
+
+  if(loading)return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:300}}><div style={{fontSize:13,color:T.text3,fontWeight:600}}>Loading...</div></div>);
+
+  if(view==="session"&&activeDay&&sessionDone)return(
+    <div style={{paddingBottom:40}}>
+      <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",padding:32,textAlign:"center"}}>
+        <div style={{fontSize:64,marginBottom:16}}>🔥</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,fontWeight:600,color:T.text1,marginBottom:6}}>Session Complete</div>
+        <div style={{fontSize:15,color:T.text2,marginBottom:28}}>{activeDay.emoji} {activeDay.title}</div>
+        <div style={{display:"flex",gap:12,marginBottom:24}}>
+          {[["Exercises",activeDay.exercises.length],["Sets",activeDay.exercises.reduce((a,e)=>a+e.sets,0)],["Min",20]].map(([l,n])=>(
+            <div key={l} style={{background:T.card,borderRadius:12,padding:"14px 18px",textAlign:"center",border:`1px solid ${T.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:26,fontWeight:600,color:activeDay.color}}>{n}</div>
+              <div style={{fontSize:10,color:T.text3,letterSpacing:1,fontWeight:600}}>{l.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{fontSize:14,color:activeDay.color,marginBottom:8,fontWeight:700}}>🔥 Streak: {streaks.current} day{streaks.current!==1?"s":""}</div>
+        <div style={{fontSize:13,color:T.text2,marginBottom:32,lineHeight:1.7,maxWidth:280,fontFamily:"'Playfair Display',serif",fontStyle:"italic"}}>{getMotivation(streaks.current)}</div>
+        <button style={{padding:"14px 32px",border:"none",borderRadius:12,fontSize:13,fontWeight:700,background:activeDay.color,color:"white",cursor:"pointer"}} onClick={()=>setView("home")}>← Back to Home</button>
+      </div>
+    </div>
+  );
+
+  if(view==="session"&&activeDay)return(
+    <div style={{paddingBottom:40}}>
+      <div style={{background:T.card,padding:"16px 20px",display:"flex",alignItems:"center",gap:14,borderBottom:`3px solid ${activeDay.color}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+        <button style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.text2,fontSize:13,cursor:"pointer",padding:"6px 12px",fontWeight:600}} onClick={()=>setView("home")}>← Back</button>
+        <div>
+          <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:600,color:T.text1}}>{activeDay.emoji} {activeDay.title}</div>
+          <div style={{fontSize:10,color:T.text3,letterSpacing:1.5,marginTop:2,fontWeight:600}}>{activeDay.label} · 20 MINUTES</div>
+        </div>
+      </div>
+      {showWarmup&&(
+        <div style={{margin:16,background:T.card,border:`1px solid ${T.border}`,borderRadius:14,padding:20,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+          <div style={{fontSize:13,fontWeight:700,color:T.text1,marginBottom:12}}>⚡ 3-Min Warm-Up First</div>
+          {WARMUP.map((w,i)=><div key={i} style={{fontSize:13,color:T.text2,marginBottom:8,display:"flex",gap:8}}><span style={{color:T.green,fontWeight:700}}>✓</span>{w}</div>)}
+          <button style={{display:"block",width:"100%",marginTop:16,padding:"13px",border:"none",borderRadius:10,fontSize:13,fontWeight:700,background:activeDay.color,color:"white",cursor:"pointer"}} onClick={()=>setShowWarmup(false)}>Warm-Up Done → Start Exercises</button>
+        </div>
+      )}
+      {!showWarmup&&(
+        <div style={{padding:"8px 16px"}}>
+          {activeDay.exercises.map(ex=>(
+            <div key={ex.id} style={{background:T.card,borderRadius:14,padding:18,marginBottom:12,border:`1px solid ${T.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:16,fontWeight:600,color:T.text1,marginBottom:3}}>{ex.name}</div>
+              <div style={{fontSize:12,color:activeDay.color,fontWeight:700,marginBottom:6}}>{ex.sets} sets × {ex.reps}</div>
+              <div style={{fontSize:12,color:T.text3,marginBottom:14,lineHeight:1.6}}>{ex.note}</div>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,padding:"10px 12px",background:T.bg2,borderRadius:8}}>
+                <span style={{fontSize:12,color:T.text3,fontWeight:600,whiteSpace:"nowrap"}}>Weight / load:</span>
+                <input style={{flex:1,background:"transparent",border:"none",borderBottom:`1px solid ${T.border2}`,color:T.text1,fontSize:13,padding:"2px 0"}} placeholder={weights?.[ex.id]?`Last: ${weights[ex.id]}`:"kg / band / BW"} value={weightInputs[ex.id]||""} onChange={e=>setWeightInputs(p=>({...p,[ex.id]:e.target.value}))}/>
+              </div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {Array.from({length:ex.sets}).map((_,i)=>(
+                  <div key={i} onClick={()=>togSet(ex.id,i)} style={{padding:"9px 16px",borderRadius:8,fontSize:11,fontWeight:700,letterSpacing:1,cursor:"pointer",background:isSD(ex.id,i)?activeDay.color:T.bg2,color:isSD(ex.id,i)?"white":T.text2,border:`2px solid ${isSD(ex.id,i)?activeDay.color:T.border2}`,transition:"all 0.15s"}}>
+                    {isSD(ex.id,i)?"✓":`SET ${i+1}`}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <button onClick={()=>{if(allDone()&&!saving)compSess();}} style={{display:"block",width:"100%",padding:"16px",border:"none",borderRadius:12,fontSize:13,fontWeight:700,background:allDone()?activeDay.color:T.bg3,color:allDone()?"white":T.text3,marginTop:8,marginBottom:20,cursor:allDone()?"pointer":"not-allowed",transition:"all 0.2s"}}>
+            {saving?"Saving...":allDone()?"✓ Complete Session":"Tick Off All Sets First"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
+  if(view==="progress")return(
+    <div style={{paddingBottom:40}}>
+      <div style={{background:T.card,padding:"16px 20px",display:"flex",alignItems:"center",gap:14,borderBottom:`1px solid ${T.border}`,boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
+        <button style={{background:"none",border:`1px solid ${T.border}`,borderRadius:8,color:T.text2,fontSize:13,cursor:"pointer",padding:"6px 12px",fontWeight:600}} onClick={()=>setView("home")}>← Back</button>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:600,color:T.text1}}>📊 Progress</div>
+      </div>
+      <div style={{padding:16}}>
+        <div style={{fontSize:11,letterSpacing:2,color:T.text3,marginBottom:14,marginTop:8,fontWeight:600,textTransform:"uppercase"}}>Session History</div>
+        {Object.keys(logs).length===0&&<div style={{color:T.text3,fontSize:14,textAlign:"center",marginTop:40,fontFamily:"'Playfair Display',serif",fontStyle:"italic"}}>No sessions yet. Get started!</div>}
+        {Object.keys(logs).sort().reverse().map(wk=>{
+          const sess=logs[wk],cnt=Object.values(sess).filter(Boolean).length;
+          return(
+            <div key={wk} style={{background:T.card,borderRadius:12,padding:16,marginBottom:10,border:`1px solid ${T.border}`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                <div style={{fontSize:12,color:T.text1,fontWeight:700}}>{wk}</div>
+                <div style={{fontSize:12,color:T.anchor,fontWeight:700}}>{cnt}/5 sessions</div>
+              </div>
+              <div style={{display:"flex",gap:6,marginBottom:10}}>
+                {STRENGTH_DAYS.map(d=>(
+                  <div key={d.id} style={{flex:1,height:30,borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,background:sess[d.id]?d.color:T.bg3,color:sess[d.id]?"white":T.text3}}>
+                    {sess[d.id]?"✓":"·"}
+                  </div>
+                ))}
+              </div>
+              <div style={{height:5,background:T.bg3,borderRadius:3,overflow:"hidden"}}>
+                <div style={{height:"100%",borderRadius:3,width:`${(cnt/5)*100}%`,background:cnt===5?T.green:T.anchor}}/>
+              </div>
+            </div>
+          );
+        })}
+        {Object.keys(weights).length>0&&(
+          <div style={{marginTop:20}}>
+            <div style={{fontSize:11,letterSpacing:2,color:T.text3,marginBottom:12,fontWeight:600,textTransform:"uppercase"}}>Last Recorded Weights</div>
+            <div style={{background:T.card,borderRadius:12,border:`1px solid ${T.border}`,overflow:"hidden"}}>
+              {Object.entries(weights).map(([k,v],idx,arr)=>{
+                const ex=STRENGTH_DAYS.flatMap(d=>d.exercises).find(e=>e.id===k);
+                return ex?(<div key={k} style={{display:"flex",justifyContent:"space-between",padding:"12px 16px",borderBottom:idx<arr.length-1?`1px solid ${T.border}`:"none"}}>
+                  <span style={{fontSize:13,color:T.text2}}>{ex.name}</span>
+                  <span style={{fontSize:13,color:T.anchor,fontWeight:700}}>{v}</span>
+                </div>):null;
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{paddingBottom:40}}>
+      <div style={{background:T.card,padding:"24px 20px 18px",borderBottom:`1px solid ${T.border}`,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:18}}>
+          <div>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:600,color:T.text1}}>Runner<span style={{color:T.anchor}}>Strong</span></div>
+            <div style={{fontSize:10,color:T.text3,letterSpacing:1.5,marginTop:3,fontWeight:600}}>5 × 20 MIN · INJURY-AWARE · BUILT FOR VOLUME</div>
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:6,background:T.bg2,border:`1px solid ${T.border2}`,borderRadius:20,padding:"6px 14px"}}>
+            <span style={{fontSize:18}}>{badge.icon}</span>
+            <span style={{fontSize:11,fontWeight:700,color:T.anchor}}>{badge.label}</span>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          {[["Sessions",totSess],["Streak",streaks.current],["Best",streaks.best],["Week",`${wkProg}/5`]].map(([l,v])=>(
+            <div key={l} style={{flex:1,background:T.bg2,borderRadius:10,padding:"10px 6px",textAlign:"center",border:`1px solid ${T.border}`}}>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:600,color:T.anchor}}>{v}</div>
+              <div style={{fontSize:9,color:T.text3,letterSpacing:1,marginTop:2,fontWeight:600}}>{l.toUpperCase()}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:8}}>
+          {STRENGTH_DAYS.map(d=>(
+            <div key={d.id} style={{width:38,height:38,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:700,background:isC(d.id)?d.color:T.bg3,color:isC(d.id)?"white":T.text3,border:`2px solid ${isC(d.id)?d.color:T.border2}`}}>
+              {isC(d.id)?"✓":d.label.slice(0,1)}
+            </div>
+          ))}
+        </div>
+        <div style={{textAlign:"center",fontSize:11,color:T.text3,fontWeight:600}}>
+          {wkProg===5?"🎉 Perfect Week!":`${5-wkProg} sessions remaining this week`}
+        </div>
+      </div>
+      <div style={{padding:"14px 16px 0"}}>
+        {STRENGTH_DAYS.map(day=>{
+          const done=isC(day.id);
+          return(
+            <div key={day.id} onClick={()=>startSess(day)} style={{background:T.card,borderRadius:14,padding:18,marginBottom:12,cursor:"pointer",borderLeft:`4px solid ${day.color}`,opacity:done?0.7:1,boxShadow:"0 1px 4px rgba(0,0,0,0.05)",border:`1px solid ${T.border}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                <div>
+                  <div style={{fontSize:10,color:T.text3,letterSpacing:2,marginBottom:3,fontWeight:600}}>{day.label}</div>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,fontWeight:600,color:T.text1}}>{day.emoji} {day.title}</div>
+                </div>
+                {done&&<div style={{fontSize:10,fontWeight:700,letterSpacing:1,padding:"5px 10px",borderRadius:6,background:day.color,color:"white"}}>✓ DONE</div>}
+              </div>
+              <div style={{marginBottom:12}}>{day.exercises.map(ex=><div key={ex.id} style={{fontSize:12,color:T.text3,marginBottom:4}}>· {ex.name}</div>)}</div>
+              <div style={{borderRadius:8,padding:"11px",textAlign:"center",fontSize:12,fontWeight:700,letterSpacing:0.5,color:done?T.text3:"white",background:done?T.bg3:day.color}}>
+                {done?"Redo Session":"Start 20 Min →"}
+              </div>
+            </div>
+          );
+        })}
+        <div onClick={()=>setView("progress")} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:12,padding:16,textAlign:"center",fontSize:13,color:T.text2,cursor:"pointer",fontWeight:600,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+          📊 View Progress History
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── HUB ──────────────────────────────────────────────────────────────────────
+const APPS=[
+  {id:"marcos",label:"Personal OS",icon:"⚓",sub:"Daily pillars & evening reflection"},
+  {id:"strength",label:"RunnerStrong",icon:"💪",sub:"5-day strength training program"},
+];
+
+function Hub(){
+  const [active,setActive]=React.useState(null);
+  if(active)return(
+    <div style={{minHeight:"100vh",background:T.bg}}>
+      <div style={{background:T.card,borderBottom:`1px solid ${T.border}`,padding:"12px 20px",display:"flex",alignItems:"center",gap:14,position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 6px rgba(0,0,0,0.07)"}}>
+        <button onClick={()=>setActive(null)} style={{background:T.bg2,border:`1px solid ${T.border2}`,borderRadius:8,color:T.text2,fontSize:12,padding:"7px 14px",cursor:"pointer",fontWeight:600}}>← Hub</button>
+        <div style={{fontSize:11,color:T.text3,letterSpacing:1.5,textTransform:"uppercase",fontWeight:600}}>
+          {APPS.find(a=>a.id===active)?.icon} {APPS.find(a=>a.id===active)?.label}
+        </div>
+      </div>
+      <div style={{maxWidth:560,margin:"0 auto"}}>
+        {active==="marcos"&&<MarcOS/>}
+        {active==="strength"&&<StrengthTracker/>}
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
+      <div style={{padding:"52px 28px 36px",textAlign:"center",borderBottom:`1px solid ${T.border}`,background:T.card,boxShadow:"0 1px 6px rgba(0,0,0,0.05)"}}>
+        <div style={{fontSize:10,letterSpacing:4,color:T.text3,textTransform:"uppercase",marginBottom:12,fontWeight:600}}>Marc Perotti</div>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:34,fontWeight:600,color:T.text1,marginBottom:6}}>My Systems</div>
+        <div style={{fontSize:13,color:T.text2,marginBottom:20}}>All your tools. All your data. Any device.</div>
+        <div style={{display:"inline-flex",alignItems:"center",gap:7,background:"#EEF4F8",border:"1px solid #C8DCE8",borderRadius:20,padding:"7px 18px"}}>
+          <div style={{width:6,height:6,borderRadius:"50%",background:T.anchor}}/>
+          <div style={{fontSize:11,color:T.anchor,letterSpacing:1.5,textTransform:"uppercase",fontWeight:700}}>Synced across all devices</div>
+        </div>
+      </div>
+      <div style={{flex:1,padding:"28px 20px",maxWidth:560,margin:"0 auto",width:"100%",boxSizing:"border-box"}}>
+        <div style={{fontSize:10,letterSpacing:3,color:T.text3,textTransform:"uppercase",marginBottom:16,fontWeight:600}}>Your Apps</div>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {APPS.map(app=>(
+            <button key={app.id} onClick={()=>setActive(app.id)} style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:16,padding:"22px 24px",textAlign:"left",cursor:"pointer",width:"100%",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+              <div style={{display:"flex",alignItems:"center",gap:16}}>
+                <div style={{fontSize:28,width:52,height:52,borderRadius:14,background:T.bg2,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`1px solid ${T.border}`}}>{app.icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Playfair Display',serif",fontSize:17,color:T.text1,marginBottom:4,fontWeight:600}}>{app.label}</div>
+                  <div style={{fontSize:12,color:T.text3}}>{app.sub}</div>
+                </div>
+                <div style={{fontSize:16,color:T.border2}}>→</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <div style={{marginTop:12,border:`1px dashed ${T.border2}`,borderRadius:16,padding:"18px 24px",textAlign:"center"}}>
+          <div style={{fontSize:12,color:T.text3}}>+ More apps coming</div>
+        </div>
+      </div>
+      <div style={{padding:"20px",textAlign:"center",borderTop:`1px solid ${T.border}`}}>
+        <div style={{fontSize:11,color:T.text3,fontStyle:"italic",fontFamily:"'Playfair Display',serif"}}>⚓ Every nautical mile counts</div>
+      </div>
+    </div>
+  );
+}
+
+const root=ReactDOM.createRoot(document.getElementById('root'));
+root.render(<Hub/>);
+</script>
+</body>
+</html>

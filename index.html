@@ -22,7 +22,7 @@
 <div id="root"></div>
 <script type="text/babel">
 
-const SHEETDB_URL = "https://sheetdb.io/api/v1/vm50eb1f8pb5i";
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxE-dIy3sDStyoKs3wCUuYGGUSr8Bs8uSR5TCsmlAY_tRL9CiTo5e79wDxC-hUdeKsY/exec";
 
 const T = {
   bg:"#F7F4EF", bg2:"#EFECE5", bg3:"#E4E0D8",
@@ -34,22 +34,36 @@ const T = {
 // ─── API ──────────────────────────────────────────────────────────────────────
 const api = {
   async getSheet(sheet) {
-    try { const r=await fetch(`${SHEETDB_URL}?sheet=${sheet}`); if(!r.ok)return[]; return await r.json(); } catch{return[];}
-  },
-  async upsert(sheet,data,col,val) {
     try {
-      const chk=await fetch(`${SHEETDB_URL}/search?sheet=${sheet}&${col}=${encodeURIComponent(val)}`);
-      const ex=await chk.json();
-      if(ex&&ex.length>0){
-        await fetch(`${SHEETDB_URL}/${col}/${encodeURIComponent(val)}?sheet=${sheet}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({data})});
-      } else {
-        await fetch(`${SHEETDB_URL}?sheet=${sheet}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:[data]})});
-      }
-    } catch(e){console.error(e);}
+      const r = await fetch(`${GAS_URL}?sheet=${sheet}`);
+      const json = await r.json();
+      return json.data || [];
+    } catch(e) { console.error("getSheet error:", e); return []; }
   },
-  async post(sheet,data) {
-    try { await fetch(`${SHEETDB_URL}?sheet=${sheet}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:[data]})}); } catch(e){console.error(e);}
-  }
+  async post(sheet, data) {
+    try {
+      const r = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ action: "insert", sheet, data }),
+        redirect: "follow",
+      });
+      const json = await r.json();
+      if (json.status !== "ok") console.error("POST error:", json);
+    } catch(e) { console.error("post error:", e); }
+  },
+  async upsert(sheet, data, matchCol, matchVal) {
+    try {
+      const r = await fetch(GAS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: JSON.stringify({ action: "upsert", sheet, data, matchCol, matchVal }),
+        redirect: "follow",
+      });
+      const json = await r.json();
+      if (json.status !== "ok") console.error("UPSERT error:", json);
+    } catch(e) { console.error("upsert error:", e); }
+  },
 };
 
 // ─── PILLARS ──────────────────────────────────────────────────────────────────
@@ -173,7 +187,7 @@ function ReflectionJournal({initData,onSave}){
   const [foc,setFoc]=React.useState(null);
   const tmr=React.useRef(null);
   const upd=(id,val)=>{const n={...ans,[id]:val};setAns(n);clearTimeout(tmr.current);tmr.current=setTimeout(()=>{if(onSave)onSave(n);},1500);};
-  const ta=(id,rows=1)=>({width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${foc===id?T.border2:T.border}`,color:T.text1,fontSize:14,lineHeight:1.7,padding:"4px 0 6px",fontFamily:"'Playfair Display',serif",transition:"border-color 0.15s"});
+  const ta=(id)=>({width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${foc===id?T.border2:T.border}`,color:T.text1,fontSize:14,lineHeight:1.7,padding:"4px 0 6px",fontFamily:"'Playfair Display',serif",transition:"border-color 0.15s"});
   return(
     <div style={{marginTop:12}}>
       <div style={{background:T.card,border:`1px solid ${T.border}`,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.05)"}}>
@@ -440,8 +454,7 @@ function StrengthTracker(){
     let{current:c,best:b,lastDate:ld}=streaks;
     if(ld===today){}else if(ld===yest){c+=1;}else{c=1;}if(c>b)b=c;
     const ns={current:c,best:b,lastDate:today};
-    const weightsUsed=activeDay.exercises.map(e=>`${e.name}:${weightInputs[e.id]||"BW"}`).join("|");
-    await api.post("Strength_Sessions",{week_key:weekKey,day_id:activeDay.id,day_title:activeDay.title,date:getDateKey(),exercises:activeDay.exercises.length,sets:activeDay.exercises.reduce((a,e)=>a+e.sets,0),weights_used:weightsUsed});
+    await api.post("Strength_Sessions",{week_key:weekKey,day_id:activeDay.id,day_title:activeDay.title,date:getDateKey(),exercises:activeDay.exercises.length,sets:activeDay.exercises.reduce((a,e)=>a+e.sets,0),weights_used:JSON.stringify(Object.fromEntries(activeDay.exercises.map(e=>[e.id,weightInputs[e.id]||""])))});
     await api.upsert("Strength_Meta",{key:"weights",value:JSON.stringify(nw)},"key","weights");
     await api.upsert("Strength_Meta",{key:"streaks",value:JSON.stringify(ns)},"key","streaks");
     setLogs(prev=>({...prev,[weekKey]:{...(prev[weekKey]||{}),[activeDay.id]:true}}));
